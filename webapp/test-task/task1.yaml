@@ -1,0 +1,60 @@
+apiVersion: tekton.dev/v1alpha1
+kind: Task
+metadata:
+  name: task1
+spec:
+  resources:
+    inputs:
+      - name: source
+        type: git
+    outputs:
+      - name: builtImage
+        type: image
+  workspaces:
+    - name: cache
+      mountPath: /nfs
+  steps:
+    - name: clone-source-to-scratchpad
+      image: ubuntu
+      script: |
+        cp -avr $(inputs.resources.source.path)/ $(workspaces.cache.path)/
+        ls
+    - name: show
+      image: ubuntu
+      script: |
+        #! /bin/bash
+        ls -la $(workspaces.cache.path)
+    - name: npm-install
+      image: node
+      workingDir: $(workspaces.cache.path)/source/
+      command: 
+        - /bin/sh
+        - -c
+      args:
+        - npm install
+    - name: npm-update
+      image: node
+      workingDir: $(workspaces.cache.path)/source/
+      command:
+        - /bin/sh
+        - -c
+      args:
+        - npm audit fix --force
+    - name: npm-run
+      image: node
+      workingDir: $(workspaces.cache.path)/source/
+      command: 
+        - /bin/sh
+        - -c
+      args: 
+        - npm run build:prod
+    - name: build-images
+      image: cnych/kaniko-executor:v0.22.0
+      env:
+      - name: DOCKER_CONFIG
+        value: /tekton/home/.docker
+      command:
+      - /kaniko/executor
+      - --dockerfile=Dockerfile
+      - --context=$(workspaces.cache.path)/source/
+      - --destination=calendulagirl/lianwarehouse:latest
